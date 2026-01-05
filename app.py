@@ -167,7 +167,11 @@ with st.sidebar:
         value=str(Path(__file__).with_name("ve2plume_full_rti_sti.py")),
         help="Point this to your VE python file. Default assumes it sits next to app.py."
     )
-    dataset_dir = st.text_input("Dataset folder", value="dataset", help="Folder containing LMDB simulations.")
+    # Use an absolute default so the bundled ./dataset is found even if Streamlit
+    # is launched from another working directory.
+    default_dataset = str((Path(__file__).parent / "dataset").resolve())
+    dataset_dir = st.text_input("Dataset folder", value=default_dataset, help="Folder containing LMDB simulations (data.mdb/lock.mdb).")
+    st.caption(f"Resolved: {Path(dataset_dir).expanduser().resolve()}")
     out_dir = st.text_input("Output folder", value="streamlit_outputs", help="Where to write figures/json exports.")
 
     st.header("2) Case selection")
@@ -202,9 +206,21 @@ except Exception as e:
     st.error(f"Failed to import VE module: {e}")
     st.stop()
 
-if not Path(dataset_dir).exists():
-    st.warning("Dataset folder not found yet. Update the sidebar path.")
+p_dataset = Path(dataset_dir).expanduser()
+if not p_dataset.exists():
+    st.warning("Dataset folder not found. Please set the full path in the sidebar.")
+    st.info(r"Windows example: C:\Users\<you>\Downloads\ve2plume_streamlit_tool\dataset")
     st.stop()
+if p_dataset.is_file():
+    st.warning("You selected a file. Please select the *folder* that contains LMDB files (data.mdb/lock.mdb).")
+    st.stop()
+# Quick diagnostics to help users validate the folder
+try:
+    files = sorted([x.name for x in p_dataset.iterdir()])
+    preview = ", ".join(files[:12]) + (" ..." if len(files) > 12 else "")
+    st.sidebar.info(f"Dataset contents ({len(files)} files): {preview}")
+except Exception:
+    pass
 
 with st.spinner("Loading LMDB case into memory..."):
     phi, k, p_series, sg_obs = load_case_from_lmdb(ve_py_path, dataset_dir, int(sim_id), nt_max_guess=getattr(ve, "NT_MAX_GUESS", 8000))
